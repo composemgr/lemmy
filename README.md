@@ -50,9 +50,9 @@ See `docker-compose.yaml` for complete list of configurable options.
 
 ## 📂 Volumes
 
-- `./rootfs/data/lemmy` - Data storage
-- `./rootfs/config/lemmy` - Data storage
-- `./rootfs/data/db/postgres/lemmy` - Data storage
+- `./volumes/data/lemmy` - Data storage
+- `./volumes/config/lemmy` - Data storage
+- `./volumes/data/db/postgres/lemmy` - Data storage
 
 ## 🔐 Security
 
