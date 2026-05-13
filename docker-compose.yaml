@@ -1,5 +1,6 @@
 # nginx proxy address - http://172.17.0.1:8087
 
+name: lemmy
 x-logging: &default-logging
   driver: json-file
   options:
@@ -9,30 +10,52 @@ x-logging: &default-logging
 services:
   lemmy:
     image: dessalines/lemmy:latest
+    pull_policy: always
     container_name: lemmy-app
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     networks:
       - lemmy
     ports:
-      - "8087:8536"
+      - "172.17.0.1:8087:8536"
     environment:
       TZ: ${TZ:-America/New_York}
+      LEMMY_DATABASE_URL: postgresql://${DB_USER_NAME:-lemmy}:${DB_USER_PASS:-changeme_db_password}@lemmy-db:5432/${DB_CREATE_DATABASE_NAME:-lemmy}
+      RUST_LOG: warn
     volumes:
-      - ./volumes/data/lemmy:/data
       - ./volumes/config/lemmy:/config
     depends_on:
-      - lemmy-db
+      lemmy-db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8536"]
       interval: 30s
       timeout: 10s
       retries: 3
 
+  lemmy-ui:
+    image: dessalines/lemmy-ui:latest
+    pull_policy: always
+    container_name: lemmy-ui
+    restart: always
+    logging: *default-logging
+    networks:
+      - lemmy
+    ports:
+      - "172.17.0.1:8088:1234"
+    environment:
+      TZ: ${TZ:-America/New_York}
+      LEMMY_UI_LEMMY_INTERNAL_HOST: lemmy:8536
+      LEMMY_UI_LEMMY_EXTERNAL_HOST: ${BASE_HOST_NAME:-$HOSTNAME}
+      LEMMY_UI_HTTPS: true
+    depends_on:
+      - lemmy
+
   lemmy-db:
-    image: postgres:16-alpine
+    image: postgres:latest
+    pull_policy: always
     container_name: lemmy-db
-    restart: unless-stopped
+    restart: always
     logging: *default-logging
     networks:
       - lemmy
@@ -51,4 +74,5 @@ services:
 
 networks:
   lemmy:
+    name: lemmy
     external: false
