@@ -16,10 +16,14 @@ services:
     logging: *default-logging
     networks:
       - lemmy
+      - proxy
+      - cloudflare
     ports:
       - "172.17.0.1:8087:8536"
     environment:
       TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-app
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
       LEMMY_DATABASE_URL: postgresql://${DB_USER_NAME:-lemmy}:${DB_USER_PASS:-changeme_db_password}@lemmy-db:5432/${DB_CREATE_DATABASE_NAME:-lemmy}
       RUST_LOG: warn
     volumes:
@@ -32,6 +36,22 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    labels:
+      - 'traefik.enable=true'
+      - 'cloudflare.enable=true'
+      - 'traefik.docker.network=proxy'
+      - 'cloudflare.service=http://lemmy-app:8536'
+      - 'cloudflare.hostname=lemmy.${CLOUDFLARE_ZONE_NAME:-}'
+      - 'traefik.http.routers.lemmy-app.entrypoints=http'
+      - 'traefik.http.routers.lemmy-app-secure.tls=true'
+      - 'traefik.http.routers.lemmy-app.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.middlewares.lemmy-app-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.lemmy-app.middlewares=lemmy-app-https-redirect'
+      - 'traefik.http.routers.lemmy-app-secure.entrypoints=https'
+      - 'traefik.http.routers.lemmy-app-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.lemmy-app-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.lemmy-app-secure.service=lemmy-app'
+      - 'traefik.http.services.lemmy-app.loadbalancer.server.port=8536'
 
   lemmy-ui:
     image: dessalines/lemmy-ui:latest
@@ -41,15 +61,35 @@ services:
     logging: *default-logging
     networks:
       - lemmy
+      - proxy
+      - cloudflare
     ports:
       - "172.17.0.1:8088:1234"
     environment:
       TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-ui
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
       LEMMY_UI_LEMMY_INTERNAL_HOST: lemmy:8536
       LEMMY_UI_LEMMY_EXTERNAL_HOST: ${BASE_HOST_NAME:-$HOSTNAME}
       LEMMY_UI_HTTPS: true
     depends_on:
       - lemmy
+    labels:
+      - 'traefik.enable=true'
+      - 'cloudflare.enable=true'
+      - 'traefik.docker.network=proxy'
+      - 'cloudflare.service=http://lemmy-ui:1234'
+      - 'cloudflare.hostname=lemmy.${CLOUDFLARE_ZONE_NAME:-}'
+      - 'traefik.http.routers.lemmy-ui.entrypoints=http'
+      - 'traefik.http.routers.lemmy-ui-secure.tls=true'
+      - 'traefik.http.routers.lemmy-ui.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.middlewares.lemmy-ui-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.lemmy-ui.middlewares=lemmy-ui-https-redirect'
+      - 'traefik.http.routers.lemmy-ui-secure.entrypoints=https'
+      - 'traefik.http.routers.lemmy-ui-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.lemmy-ui-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.lemmy-ui-secure.service=lemmy-ui'
+      - 'traefik.http.services.lemmy-ui.loadbalancer.server.port=1234'
 
   lemmy-db:
     image: postgres:latest
@@ -61,6 +101,7 @@ services:
       - lemmy
     environment:
       TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-db
       POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-lemmy}
       POSTGRES_USER: ${DB_USER_NAME:-lemmy}
       POSTGRES_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
@@ -76,3 +117,7 @@ networks:
   lemmy:
     name: lemmy
     external: false
+  proxy:
+    external: true
+  cloudflare:
+    external: true
