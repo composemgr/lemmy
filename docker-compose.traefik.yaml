@@ -1,0 +1,101 @@
+name: lemmy
+x-logging: &default-logging
+  options:
+    max-size: '5m'
+    max-file: '1'
+  driver: json-file
+
+services:
+  app:
+    image: dessalines/lemmy-ui:nightly
+    container_name: lemmy-app
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: ${BASE_HOST_NAME:-$HOSTNAME}
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-app
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+      LEMMY_UI_LEMMY_INTERNAL_HOST: lemmy:8536
+      LEMMY_UI_LEMMY_EXTERNAL_HOST: ${BASE_HOST_NAME:-$HOSTNAME}
+      LEMMY_UI_HTTPS: 'true'
+    depends_on:
+      server:
+        condition: service_healthy
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=traefik'
+      - 'traefik.http.routers.lemmy-app.entrypoints=http'
+      - 'traefik.http.routers.lemmy-app.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
+      - 'traefik.http.routers.lemmy-app.middlewares=lemmy-app-https-redirect'
+      - 'traefik.http.middlewares.lemmy-app-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.lemmy-app-secure.entrypoints=https'
+      - 'traefik.http.routers.lemmy-app-secure.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
+      - 'traefik.http.routers.lemmy-app-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.lemmy-app-secure.service=lemmy-app'
+      - 'traefik.http.services.lemmy-app.loadbalancer.server.port=1234'
+    networks:
+      - lemmy
+      - traefik
+
+  server:
+    image: dessalines/lemmy:nightly
+    container_name: lemmy-server
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: lemmy
+    restart: always
+    pull_policy: always
+    command: sh -c "envsubst < /etc/lemmy/extra_config_defaults.yaml > /config/config.yaml && /app/lemmy migrate && /app/lemmy run"
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-server
+      LEMMY_DATABASE_URL: postgresql://${DB_USER_NAME:-lemmy}:${DB_USER_PASS:-replace-with-a-random-password}@lemmy-db:5432/${DB_CREATE_DATABASE_NAME:-lemmy}
+      LEMMY_DATABASE_MAX_CONNECTIONS: 24
+      LEMMY_BIND: 0.0.0.0:8536
+      RUST_LOG: warn
+    volumes:
+      - './volumes/config/lemmy:/config:z'
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8536']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - lemmy
+
+  db:
+    image: postgres:alpine
+    container_name: lemmy-db
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: lemmy-db
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: lemmy-db
+      POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-lemmy}
+      POSTGRES_USER: ${DB_USER_NAME:-lemmy}
+      POSTGRES_PASSWORD: ${DB_USER_PASS:-replace-with-a-random-password}
+    volumes:
+      - './volumes/db/postgres/lemmy:/var/lib/postgresql/data:z'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER_NAME:-lemmy} -d ${DB_CREATE_DATABASE_NAME:-lemmy}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lemmy
+
+networks:
+  lemmy:
+    name: lemmy
+    external: false
+  traefik:
+    external: true
