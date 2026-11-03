@@ -23,6 +23,12 @@ services:
       LEMMY_UI_LEMMY_INTERNAL_HOST: lemmy:8536
       LEMMY_UI_LEMMY_EXTERNAL_HOST: ${BASE_HOST_NAME:-$HOSTNAME}
       LEMMY_UI_HTTPS: 'true'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -ILfSs http://localhost:1234/ > /dev/null || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     ports:
       - '172.17.0.1:64231:1234'
     depends_on:
